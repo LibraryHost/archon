@@ -937,8 +937,10 @@ abstract class Collections_Archon
 
       $ClassificationID = 0;
 
+      $mySearch = true;
       while(count($arrClassifications) > 1)
       {
+         $mySearch = false;
          $ClassificationIdentifier = array_shift($arrClassifications);
          $prevClassificationID = $ClassificationID;
 
@@ -1003,10 +1005,19 @@ abstract class Collections_Archon
          $minLengthVars = array();
       }
 
-      $query = "SELECT ID FROM tblCollections_Collections WHERE ClassificationID = ? AND (CollectionIdentifier LIKE ?$minLengthQuery);"; // replace CollectionIdentifier = with CollectionIdentifier Like 
+      if ($ClassificationID != 0 && !$mySearch)
+      {
+         $query = "SELECT ID FROM tblCollections_Collections WHERE ClassificationID = ? AND (CollectionIdentifier LIKE ?$minLengthQuery);"; // change exact search to partial on collection identifier using Like statement
       $types = array_merge(array('integer', 'text'), $minLengthTypes);
-      $vars = array_merge(array($ClassificationID, "%$CollectionIdentifier%"), $minLengthVars); //added wildcards with $CollectionIdentifier for partial search
-
+         $vars = array_merge(array($ClassificationID, "%$CollectionIdentifier%"), $minLengthVars);
+      }
+      else
+      {
+         // implemented partial search on collection and classification identifier
+         $query = "SELECT tblCollections_Collections.ID FROM tblCollections_Collections LEFT JOIN tblCollections_Classifications ON tblCollections_Classifications.ID = tblCollections_Collections.ClassificationID WHERE (CollectionIdentifier LIKE ? OR ClassificationIdentifier LIKE ?$minLengthQuery);";
+         $types = array_merge(array('text', 'text'), $minLengthTypes);
+         $vars = array_merge(array("%$CollectionIdentifier%", "%$CollectionIdentifier%"), $minLengthVars);
+      }
       if(!isset($preps[$query]))
       {
          $preps[$query] = $this->mdb2->prepare($query, $types, MDB2_PREPARE_RESULT);
@@ -1017,10 +1028,22 @@ abstract class Collections_Archon
          trigger_error($result->getMessage(), E_USER_ERROR);
       }
 
-      $row = $result->fetchRow();
+      $rows = $result->fetchAll();
       $result->free();
 
-      return $row['ID'] ? $row['ID'] : 0;
+      $ids = array();
+      if (!empty($rows))
+      {
+         foreach ($rows as $row)
+         {
+            $ids[] = $row["ID"];
+         }
+      }
+      else
+      {
+         return 0;
+      }
+      return implode(",", $ids);
    }
 
    /**
@@ -2069,9 +2092,7 @@ abstract class Collections_Archon
          $ID = $this->getCollectionIDForNumber($SearchQuery);
          if($ID)
          {
-            $subquery .= " OR ID = ?";
-            $subtypes[] = 'integer';
-            $subvars[] = $ID;
+            $subquery .= " OR ID IN (" . $ID . ")"; //changes to get multiple records in case of partial search
          }
 
          // If our query is just a number, try to match it
@@ -2449,9 +2470,7 @@ abstract class Collections_Archon
          $ID = $this->getCollectionIDForNumber($SearchQuery);
          if($ID)
          {
-            $subquery .= " OR ID = ?";
-            $subtypes[] = 'integer';
-            $subvars[] = $ID;
+            $subquery .= " OR ID IN (" . $ID . ")"; //changes to get multiple records in case of partial search
          }
 
          // If our query is just a number, try to match it
@@ -2847,9 +2866,7 @@ abstract class Collections_Archon
          $ID = $this->getCollectionIDForNumber($SearchQuery);
          if($ID)
          {
-            $subquery .= " OR ID = ?";
-            $subtypes[] = 'integer';
-            $subvars[] = $ID;
+            $subquery .= " OR ID IN (" . $ID . ")"; //changes to get multiple records in case of partial search
          }
 
          // If our query is just a number, try to match it
